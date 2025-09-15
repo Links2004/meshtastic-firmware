@@ -71,7 +71,9 @@ class BluetoothPhoneAPI : public PhoneAPI, public concurrency::OSThread
 
         fromNumCharacteristic->setValue(val, sizeof(val));
 #ifdef NIMBLE_TWO
-        fromNumCharacteristic->notify(val, sizeof(val), BLE_HS_CONN_HANDLE_NONE);
+        if (!fromNumCharacteristic->notify(val, sizeof(val), BLE_HS_CONN_HANDLE_NONE)) {
+            LOG_ERROR("BLE notify failed");
+        }
 #else
         fromNumCharacteristic->notify();
 #endif
@@ -106,6 +108,8 @@ class NimbleBluetoothToRadioCallback : public NimBLECharacteristicCallbacks
                 bluetoothPhoneAPI->nimble_queue.at(bluetoothPhoneAPI->queue_size) = val;
                 bluetoothPhoneAPI->queue_size++;
                 bluetoothPhoneAPI->setIntervalFromNow(0);
+            } else {
+                LOG_ERROR("BLE onWrite bluetoothPhoneAPI queue full %d", bluetoothPhoneAPI->queue_size);
             }
         }
     }
@@ -311,9 +315,12 @@ void NimbleBluetooth::setup()
 {
     // Uncomment for testing
     // NimbleBluetooth::clearBonds();
+    if (isActive()) {
+        return;
+    }
 
     LOG_INFO("Init the NimBLE bluetooth module");
-
+    NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DATA_DEVICE);
     NimBLEDevice::init(getDeviceName());
 #ifdef NIMBLE_TWO
     NimBLEDevice::setPower(9);
@@ -345,19 +352,21 @@ void NimbleBluetooth::setupService()
     NimBLECharacteristic *FromRadioCharacteristic;
     // Define the characteristics that the app is looking for
     if (config.bluetooth.mode == meshtastic_Config_BluetoothConfig_PairingMode_NO_PIN) {
-        ToRadioCharacteristic = bleService->createCharacteristic(TORADIO_UUID, NIMBLE_PROPERTY::WRITE);
+        ToRadioCharacteristic = bleService->createCharacteristic(TORADIO_UUID, NIMBLE_PROPERTY::WRITE, MAX_TO_FROM_RADIO_SIZE);
         FromRadioCharacteristic = bleService->createCharacteristic(FROMRADIO_UUID, NIMBLE_PROPERTY::READ);
-        fromNumCharacteristic = bleService->createCharacteristic(FROMNUM_UUID, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ);
+        fromNumCharacteristic =
+            bleService->createCharacteristic(FROMNUM_UUID, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ, 4);
         logRadioCharacteristic =
             bleService->createCharacteristic(LOGRADIO_UUID, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ, 512U);
     } else {
         ToRadioCharacteristic = bleService->createCharacteristic(
-            TORADIO_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_AUTHEN | NIMBLE_PROPERTY::WRITE_ENC);
+            TORADIO_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_AUTHEN | NIMBLE_PROPERTY::WRITE_ENC,
+            MAX_TO_FROM_RADIO_SIZE);
         FromRadioCharacteristic = bleService->createCharacteristic(
             FROMRADIO_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_AUTHEN | NIMBLE_PROPERTY::READ_ENC);
-        fromNumCharacteristic =
-            bleService->createCharacteristic(FROMNUM_UUID, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ |
-                                                               NIMBLE_PROPERTY::READ_AUTHEN | NIMBLE_PROPERTY::READ_ENC);
+        fromNumCharacteristic = bleService->createCharacteristic(
+            FROMNUM_UUID,
+            NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_AUTHEN | NIMBLE_PROPERTY::READ_ENC, 4);
         logRadioCharacteristic = bleService->createCharacteristic(
             LOGRADIO_UUID,
             NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_AUTHEN | NIMBLE_PROPERTY::READ_ENC, 512U);
@@ -392,7 +401,11 @@ void NimbleBluetooth::startAdvertising()
 {
 #if defined(NIMBLE_TWO) && defined(CONFIG_BT_NIMBLE_EXT_ADV)
     NimBLEExtAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
-    NimBLEExtAdvertisement legacyAdvertising;
+    if (pAdvertising->isActive(0)) {
+        return;
+    }
+
+    NimBLEExtAdvertisement legacyAdvertising(BLE_HCI_LE_PHY_1M, BLE_HCI_LE_PHY_2M);
 
     legacyAdvertising.setLegacyAdvertising(true);
     legacyAdvertising.setScannable(true);
@@ -405,7 +418,7 @@ void NimbleBluetooth::startAdvertising()
     legacyAdvertising.setMinInterval(500);
     legacyAdvertising.setMaxInterval(1000);
 
-    NimBLEExtAdvertisement legacyScanResponse;
+    NimBLEExtAdvertisement legacyScanResponse(BLE_HCI_LE_PHY_1M, BLE_HCI_LE_PHY_2M);
     legacyScanResponse.setLegacyAdvertising(true);
     legacyScanResponse.setConnectable(true);
     legacyScanResponse.setName(getDeviceName());

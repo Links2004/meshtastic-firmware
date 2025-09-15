@@ -72,6 +72,7 @@ NRF52Bluetooth *nrf52Bluetooth = nullptr;
 #include "mqtt/MQTT.h"
 #endif
 
+#include "BLEMeshInterface.h"
 #include "LLCC68Interface.h"
 #include "LR1110Interface.h"
 #include "LR1120Interface.h"
@@ -1396,6 +1397,24 @@ void setup()
         } else {
             LOG_INFO("SX1280 init success");
             radioType = SX1280_RADIO;
+        }
+    }
+#endif
+
+#if !MESHTASTIC_EXCLUDE_BLUETOOTH && defined(USE_BLE_RF) && defined(CONFIG_BT_NIMBLE_EXT_ADV) && defined(NIMBLE_TWO) &&          \
+    RADIOLIB_EXCLUDE_BLE_MESH_RF != 1
+    if (!rIf) {
+        if (!nimbleBluetooth) {
+            nimbleBluetooth = new NimbleBluetooth();
+        }
+        rIf = new BLEMeshInterface(nimbleBluetooth);
+        if (!rIf->init()) {
+            LOG_WARN("No BLE radio");
+            delete rIf;
+            rIf = NULL;
+        } else {
+            LOG_INFO("BLE Mesh init success");
+            radioType = BLE_MESH_RADIO;
         }
     }
 #endif

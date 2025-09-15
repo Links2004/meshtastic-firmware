@@ -13,6 +13,7 @@ static BLECharacteristic fromNum = BLECharacteristic(BLEUuid(FROMNUM_UUID_16));
 static BLECharacteristic fromRadio = BLECharacteristic(BLEUuid(FROMRADIO_UUID_16));
 static BLECharacteristic toRadio = BLECharacteristic(BLEUuid(TORADIO_UUID_16));
 static BLECharacteristic logRadio = BLECharacteristic(BLEUuid(LOGRADIO_UUID_16));
+static BLECharacteristic RfMeshRadio = BLECharacteristic(BLEUuid(MESH_RF_UUID_16));
 
 static BLEDis bledis; // DIS (Device Information Service) helper class instance
 static BLEBas blebas; // BAS (Battery Service) helper class instance
